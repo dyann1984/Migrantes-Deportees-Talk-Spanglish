@@ -189,6 +189,7 @@ footer{background:var(--ink);color:#cfccc4;padding:3rem 0 2rem}
 .gal-play{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
 .gal-play span{width:54px;height:54px;border-radius:50%;background:rgba(246,166,35,.94);color:#241500;display:grid;place-items:center;font-size:1.3rem;box-shadow:0 8px 20px rgba(0,0,0,.5)}
 .gal-empty{grid-column:1/-1;text-align:center;color:#9a97b5;padding:2rem;border:1.5px dashed rgba(255,255,255,.18);border-radius:16px}
+body.admin #galAddHint{display:none}
 .tt-card{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.45rem;color:#fff;text-align:center;background:linear-gradient(135deg,rgba(37,244,238,.18),rgba(254,44,85,.22)),#111}
 .tt-card b{font-weight:800}
 .tt-card small{opacity:.85;padding:0 1rem;font-size:.78rem}
@@ -374,6 +375,10 @@ body.admin .gear{background:var(--green);border-color:var(--amber-bri)}
       <p>Momentos, episodios y recuerdos de nuestra gente. Toca una foto para verla en grande.</p>
     </div>
     <div class="gal-grid" id="galGrid"></div>
+    <div style="text-align:center;margin-top:1.8rem">
+      <button class="btn btn-gold" id="galAddBtn">＋ Subir fotos y videos</button>
+      <p id="galAddHint" style="color:#9a97b5;font-size:.82rem;margin-top:.8rem">Solo el administrador puede subir. Toca el botón e ingresa tu código.</p>
+    </div>
   </div>
 </section>
 
@@ -487,7 +492,7 @@ body.admin .gear{background:var(--green);border-color:var(--amber-bri)}
     <div class="dr-field"><label>Spotify</label><input id="aSpotify"></div>
     <div class="dr-field"><label>Apple Podcasts</label><input id="aApple"></div>
 
-    <h4>Galería (fotos y videos)</h4>
+    <h4 id="galAdminHead">Galería (fotos y videos)</h4>
     <div class="dr-field"><label>Descripción de la foto (opcional)</label><input id="galPhotoCap" placeholder="Ej. Grabando el episodio 12"></div>
     <div class="dr-field"><label class="up" style="font-size:.92rem">＋ Subir foto a la galería<input type="file" accept="image/*" id="galPhoto"></label></div>
     <div class="dr-field" style="margin-top:1rem"><label>Agregar video — link de YouTube o TikTok</label><input id="galVidUrl" placeholder="https://youtube.com/... o https://tiktok.com/..."></div>
@@ -669,8 +674,15 @@ async function doLogin(){
   if(await sha(val)===stored){enterAdmin();}
   else{$("#loginErr").textContent="Código incorrecto. Inténtalo de nuevo.";}
 }
-function enterAdmin(){document.body.classList.add("admin");$("#loginOv").classList.remove("open");fillDrawer();$("#drawer").classList.add("open");renderComments();renderGallery();toast("Modo administrador activado");}
-function logout(){document.body.classList.remove("admin");$("#drawer").classList.remove("open");renderComments();renderGallery();toast("Sesión cerrada");}
+let pendingGallery=false;
+function scrollToGalAdmin(){setTimeout(()=>{const h=$("#galAdminHead");if(h)h.scrollIntoView({behavior:"smooth",block:"start"});},260);}
+function enterAdmin(){document.body.classList.add("admin");try{localStorage.setItem("nc_admin","1");}catch(e){}$("#loginOv").classList.remove("open");fillDrawer();$("#drawer").classList.add("open");renderComments();renderGallery();if(pendingGallery){pendingGallery=false;scrollToGalAdmin();}toast("Modo administrador activado");}
+function silentAdmin(){document.body.classList.add("admin");renderComments();renderGallery();}
+function logout(){document.body.classList.remove("admin");try{localStorage.removeItem("nc_admin");}catch(e){}$("#drawer").classList.remove("open");renderComments();renderGallery();toast("Sesión cerrada");}
+$("#galAddBtn").addEventListener("click",()=>{
+  if(document.body.classList.contains("admin")){$("#drawer").classList.add("open");scrollToGalAdmin();}
+  else{pendingGallery=true;openLogin();}
+});
 
 $("#gear").addEventListener("click",()=>{if(document.body.classList.contains("admin")){$("#drawer").classList.toggle("open");}else{openLogin();}});
 $("#loginGo").addEventListener("click",doLogin);
@@ -713,14 +725,24 @@ function fillDrawer(){
   });
 }
 // image upload (downscale before storing)
-function processImage(file,maxDim,asPng){return new Promise((res,rej)=>{
+function processImage(file,maxDim,asPng){return new Promise((res)=>{
   const r=new FileReader();
-  r.onload=()=>{const img=new Image();img.onload=()=>{
-    let{width:w,height:h}=img;const sc=Math.min(1,maxDim/Math.max(w,h));w=Math.round(w*sc);h=Math.round(h*sc);
-    const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);
-    res(c.toDataURL(asPng?"image/png":"image/jpeg",asPng?undefined:0.85));
-  };img.onerror=rej;img.src=r.result;};
-  r.onerror=rej;r.readAsDataURL(file);
+  r.onload=()=>{
+    const raw=r.result;
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        let w=img.width,h=img.height;const sc=Math.min(1,maxDim/Math.max(w,h));w=Math.round(w*sc);h=Math.round(h*sc);
+        const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);
+        const out=c.toDataURL(asPng?"image/png":"image/jpeg",asPng?undefined:0.85);
+        res(out&&out.length>50?out:raw);
+      }catch(e){res(raw);}
+    };
+    img.onerror=()=>res(raw);
+    img.src=raw;
+  };
+  r.onerror=()=>res(null);
+  r.readAsDataURL(file);
 });}
 $("#imgControls").addEventListener("change",async e=>{
   const inp=e.target.closest("input[type=file]");if(!inp||!inp.files[0])return;
@@ -838,6 +860,7 @@ $("#galAdminList").addEventListener("click",async e=>{
   await loadContent();
   await loadGallery();
   await renderComments();
+  try{ if(localStorage.getItem("nc_admin")==="1") silentAdmin(); }catch(e){}
   if(STORE_MODE==="local"){toast("Cambios guardados en este navegador 💾",null);}
   else if(STORE_MODE==="mem"){toast("Vista temporal: los cambios no se guardarán","bad");}
   // reveals
