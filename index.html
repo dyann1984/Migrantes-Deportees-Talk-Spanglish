@@ -794,15 +794,36 @@ async function renderGallery(){
   for(const it of gallery){
     if(it.type==="photo"){
       const url=await sget("gmedia:"+it.id);if(!url)continue;
-      parts.push(`<a class="gal-item" data-photo="${encodeURIComponent(url)}" data-cap="${esc(it.caption||'')}"><img src="${url}" alt="${esc(it.caption||'foto')}"><span class="gal-badge">📷 Foto</span>${it.caption?`<div class="gal-cap">${esc(it.caption)}</div>`:''}</a>`);
+      parts.push(`<a class="gal-item" data-gid="${it.id}" data-photo="${encodeURIComponent(url)}" data-cap="${esc(it.caption||'')}"><img src="${url}" alt="${esc(it.caption||'foto')}"><span class="gal-badge">📷 Foto</span>${it.caption?`<div class="gal-cap">${esc(it.caption)}</div>`:''}</a>`);
     }else{
       const y=ytId(it.url),t=ttId(it.url);
-      if(y){parts.push(`<a class="gal-item" href="${esc(it.url)}" target="_blank" rel="noopener"><img src="https://img.youtube.com/vi/${y}/hqdefault.jpg" alt="" onerror="this.style.display='none'"><span class="gal-badge">▶ YouTube</span><div class="gal-play"><span>▶</span></div>${it.caption?`<div class="gal-cap">${esc(it.caption)}</div>`:''}</a>`);}
-      else{const isTT=t!==null;parts.push(`<a class="gal-item" href="${esc(it.url)}" target="_blank" rel="noopener"><div class="tt-card"><span style="font-size:1.7rem">${isTT?'🎵':'▶'}</span><b>${isTT?'Ver en TikTok':'Ver video'}</b>${it.caption?`<small>${esc(it.caption)}</small>`:''}</div><span class="gal-badge">${isTT?'TikTok':'Video'}</span></a>`);}
+      if(y){parts.push(`<a class="gal-item" data-gid="${it.id}" href="${esc(it.url)}" target="_blank" rel="noopener"><img src="https://img.youtube.com/vi/${y}/hqdefault.jpg" alt="" onerror="this.style.display='none'"><span class="gal-badge">▶ YouTube</span><div class="gal-play"><span>▶</span></div>${it.caption?`<div class="gal-cap">${esc(it.caption)}</div>`:''}</a>`);}
+      else{const isTT=t!==null;parts.push(`<a class="gal-item" data-gid="${it.id}" href="${esc(it.url)}" target="_blank" rel="noopener"><div class="tt-card"><span style="font-size:1.7rem">${isTT?'🎵':'▶'}</span><b>${isTT?'Ver en TikTok':'Ver video'}</b>${it.caption?`<small>${esc(it.caption)}</small>`:''}</div><span class="gal-badge">${isTT?'TikTok':'Video'}</span></a>`);}
     }
   }
   grid.innerHTML=parts.join("");
   renderGalleryAdmin();
+  // intentar conseguir la miniatura real de cada TikTok (si TikTok lo permite)
+  gallery.forEach(it=>{
+    if(it.type==="video" && !ytId(it.url)){
+      ttThumb(it.url).then(thumb=>{
+        if(!thumb)return;
+        const card=document.querySelector(`.gal-item[data-gid="${it.id}"]`);
+        if(card)card.innerHTML=`<img src="${thumb}" alt="" referrerpolicy="no-referrer" onerror="this.style.display='none'"><span class="gal-badge">🎵 TikTok</span><div class="gal-play"><span>▶</span></div>${it.caption?`<div class="gal-cap">${esc(it.caption)}</div>`:''}`;
+      });
+    }
+  });
+}
+const _ttCache={};
+async function ttThumb(url){
+  if(url in _ttCache)return _ttCache[url];
+  try{
+    const r=await fetch("https://www.tiktok.com/oembed?url="+encodeURIComponent(url));
+    if(!r.ok){_ttCache[url]=null;return null;}
+    const j=await r.json();
+    const th=j&&j.thumbnail_url?j.thumbnail_url:null;
+    _ttCache[url]=th;return th;
+  }catch(e){_ttCache[url]=null;return null;}
 }
 $("#galGrid").addEventListener("click",e=>{const a=e.target.closest(".gal-item");if(a&&a.dataset.photo){e.preventDefault();openLB(decodeURIComponent(a.dataset.photo),a.dataset.cap);}});
 function openLB(url,cap){$("#lbImg").src=url;$("#lbCap").textContent=cap||"";$("#lightbox").classList.add("open");}
